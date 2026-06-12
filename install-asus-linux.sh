@@ -3,7 +3,7 @@
 # ASUS Linux Tools Installation Script for Linux Mint 22.3
 # Version: 22.3.0
 #
-# This script installs the latest versions of asusctl and supergfxctl for ASUS laptops.
+# This script installs the latest versions of asusctl for ASUS laptops.
 # It will also configure the systemd services to start on boot.
 #
 # Requirements:
@@ -505,36 +505,6 @@ install_asusctl() {
     print_status "asusctl installed successfully."
 }
 
-# Install supergfxctl
-install_supergfxctl() {
-    print_status "Installing supergfxctl..."
-    
-    # Clone or update supergfxctl
-    if [ ! -d "supergfxctl" ]; then
-        print_status "Cloning supergfxctl repository..."
-        git clone https://gitlab.com/asus-linux/supergfxctl.git
-    else
-        print_status "Updating supergfxctl repository..."
-        cd supergfxctl
-        git fetch --all
-        git reset --hard origin/main
-        cd ..
-    fi
-
-    # Build and install supergfxctl using the official Makefile
-    cd supergfxctl
-    print_status "Building supergfxctl (this may take several minutes)..."
-    make
-    print_status "Installing supergfxctl..."
-    make install INSTALL_PROGRAM="sudo install -D -m 0755" INSTALL_DATA="sudo install -D -m 0644"
-    
-    # Reload systemd to recognize new service files
-    sudo systemctl daemon-reload
-    cd ..
-    
-    print_status "supergfxctl installed successfully."
-}
-
 # Configure and start services
 configure_services() {
     print_status "Configuring and starting systemd services..."
@@ -559,21 +529,6 @@ configure_services() {
         return 1
     fi
     
-    # Enable and start supergfxd service (system-level)
-    if systemctl list-unit-files --type=service 2>/dev/null | grep -q "^supergfxd\\.service"; then
-        sudo systemctl enable supergfxd.service
-        sudo systemctl start supergfxd.service
-        print_status "supergfxd.service enabled and started."
-    elif [ -f "/usr/lib/systemd/system/supergfxd.service" ] || [ -f "/lib/systemd/system/supergfxd.service" ] || [ -f "/etc/systemd/system/supergfxd.service" ] || [ -f "/usr/local/lib/systemd/system/supergfxd.service" ]; then
-        sudo systemctl daemon-reload
-        sudo systemctl enable supergfxd.service
-        sudo systemctl start supergfxd.service
-        print_status "supergfxd.service enabled and started."
-    else
-        print_error "supergfxd.service not found. Installation may have failed."
-        return 1
-    fi
-    
     # Enable asusd-user service for current user (user-level)
     if systemctl --user list-unit-files 2>/dev/null | grep -q "^asusd-user\\.service"; then
         systemctl --user enable asusd-user.service 2>/dev/null || true
@@ -584,16 +539,6 @@ configure_services() {
         print_warning "After reboot/login, you can enable it with: systemctl --user enable --now asusd-user.service"
     fi
     
-    # Add user to appropriate group for supergfxctl
-    if getent group users > /dev/null; then
-        sudo usermod -a -G users "$USER"
-        print_status "User $USER added to 'users' group."
-    elif getent group wheel > /dev/null; then
-        sudo usermod -a -G wheel "$USER"
-        print_status "User $USER added to 'wheel' group."
-    else
-        print_warning "Neither 'users' nor 'wheel' group found. You may need to add your user to an appropriate group manually."
-    fi
 }
 
 # Verify installation
@@ -610,26 +555,11 @@ verify_installation() {
         success=false
     fi
     
-    if command -v supergfxctl &> /dev/null; then
-        version=$(supergfxctl --version 2>/dev/null || echo "unknown")
-        print_status "✓ supergfxctl: $version"
-    else
-        print_error "✗ supergfxctl command not found in PATH."
-        success=false
-    fi
-    
     # Check service status
     if sudo systemctl is-active --quiet asusd.service; then
         print_status "✓ asusd.service is running."
     else
         print_warning "⚠ asusd.service is not running. Check: sudo systemctl status asusd.service"
-        success=false
-    fi
-    
-    if sudo systemctl is-active --quiet supergfxd.service; then
-        print_status "✓ supergfxd.service is running."
-    else
-        print_warning "⚠ supergfxd.service is not running. Check: sudo systemctl status supergfxd.service"
         success=false
     fi
     
@@ -651,19 +581,6 @@ show_status() {
         asusctl -s 2>/dev/null || print_warning "Could not get asusctl status. Service may still be starting."
     fi
     
-    echo
-    echo "=== SUPERGFXCTL STATUS ==="
-    if command -v supergfxctl &> /dev/null; then
-        supergfxctl --status 2>/dev/null || print_warning "Could not get supergfxctl status. Service may still be starting."
-    fi
-    
-    echo
-    echo "=== USAGE INFORMATION ==="
-    echo "• Use 'asusctl --help' for ASUS laptop control options"
-    echo "• Use 'supergfxctl --help' for GPU switching options"
-    echo "• GPU modes: Integrated, Hybrid, Vfio (and possibly AsusEgpu, AsusMuxDgpu)"
-    echo "• Example: 'supergfxctl --mode Hybrid' to enable hybrid graphics"
-    echo "• Check service logs: 'sudo journalctl -u asusd.service' or 'sudo journalctl -u supergfxd.service'"
     if [[ "$INSTALL_ROG_GUI" == "1" ]]; then
         echo "• GUI application: Launch 'rog-control-center' from your application menu"
     else
@@ -678,8 +595,7 @@ show_status() {
     echo
     echo "=== NEXT STEPS ==="
     echo "1. Reboot to ensure all changes take effect"
-    echo "2. Test GPU switching with: supergfxctl --mode Integrated"
-    echo "3. Check ASUS controls with: asusctl -s"
+    echo "2. Check ASUS controls with: asusctl -s"
     if [[ "$INSTALL_ROG_GUI" == "1" ]]; then
         echo "4. Launch 'ROG Control Center' from your application menu"
     else
@@ -702,7 +618,6 @@ main() {
     create_nouveau_blacklist
     update_firmware
     install_asusctl
-    install_supergfxctl
     configure_services
     
     if verify_installation; then

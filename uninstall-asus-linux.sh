@@ -3,13 +3,13 @@
 # ASUS Linux Tools Uninstall Script for Linux Mint 22.3
 # Version: 22.3.0
 #
-# This script removes asusctl and supergfxctl and all associated files,
+# This script removes asusctl and all associated files,
 # services, and configurations that were installed by install-asus-linux.sh
 #
 # Requirements:
 # - Linux Mint 22.3 (Cinnamon, MATE, or Xfce edition)
 # - Sudo privileges
-# - Previously installed asusctl/supergfxctl via install-asus-linux.sh
+# - Previously installed asusctl via install-asus-linux.sh
 # 
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/uninstall-asus-linux.sh | bash
@@ -24,7 +24,7 @@
 set -euo pipefail
 
 # Script configuration
-SCRIPT_VERSION="22.3.1"
+SCRIPT_VERSION="22.3.2"
 BASE_DIR="${ASUS_BUILD_DIR:-$HOME/.local/src/asus-linux}"
 
 # Function for colored output
@@ -56,8 +56,8 @@ print_header() {
 # Confirm uninstallation
 confirm_uninstall() {
     print_warning "This will completely remove ASUS Linux tools from your system:"
-    echo "  • asusctl and supergfxctl binaries"
-    echo "  • All systemd services (asusd, supergfxd, asusd-user)"
+    echo "  • asusctl binaries"
+    echo "  • All systemd services (asusd, asusd-user)"
     echo "  • Configuration files and udev rules"
     echo "  • Desktop files and icons"
     echo "  • asusd runtime configuration directory (optional)"
@@ -92,13 +92,6 @@ stop_services() {
         print_status "✓ asusd.service stopped and disabled."
     fi
     
-    # Stop and disable supergfxd service (system-level)
-    if systemctl list-unit-files | grep -q "supergfxd.service"; then
-        sudo systemctl stop supergfxd.service 2>/dev/null || true
-        sudo systemctl disable supergfxd.service 2>/dev/null || true
-        print_status "✓ supergfxd.service stopped and disabled."
-    fi
-    
     # Reload systemd
     sudo systemctl daemon-reload
     print_status "Systemd daemon reloaded."
@@ -113,14 +106,10 @@ remove_binaries() {
         "/usr/bin/asusd"
         "/usr/bin/asusd-user"
         "/usr/bin/rog-control-center"
-        "/usr/bin/supergfxctl"
-        "/usr/bin/supergfxd"
         "/usr/local/bin/asusctl"
         "/usr/local/bin/asusd"
         "/usr/local/bin/asusd-user"
         "/usr/local/bin/rog-control-center"
-        "/usr/local/bin/supergfxctl"
-        "/usr/local/bin/supergfxd"
     )
     
     for binary in "${binaries[@]}"; do
@@ -137,9 +126,7 @@ remove_service_files() {
     
     local service_files=(
         "/usr/lib/systemd/system/asusd.service"
-        "/usr/lib/systemd/system/supergfxd.service"
         "/usr/lib/systemd/user/asusd-user.service"
-        "/usr/lib/systemd/system-preset/supergfxd.preset"
     )
     
     for service_file in "${service_files[@]}"; do
@@ -158,9 +145,7 @@ remove_config_files() {
     
     local config_files=(
         "/usr/share/dbus-1/system.d/asusd.conf"
-        "/usr/share/dbus-1/system.d/org.supergfxctl.Daemon.conf"
         "/usr/lib/udev/rules.d/99-asusd.rules"
-        "/usr/lib/udev/rules.d/90-supergfxd-nvidia-pm.rules"
         "/usr/share/X11/xorg.conf.d/90-nvidia-screen-G05.conf"
     )
     
@@ -344,7 +329,7 @@ verify_removal() {
     local issues_found=false
     
     # Check if binaries still exist
-    local binaries=("asusctl" "asusd" "supergfxctl" "supergfxd" "rog-control-center")
+    local binaries=("asusctl" "asusd" "rog-control-center")
     for binary in "${binaries[@]}"; do
         if command -v "$binary" &> /dev/null; then
             print_warning "⚠ $binary still found in PATH"
@@ -355,7 +340,7 @@ verify_removal() {
     done
     
     # Check if services still exist
-    if systemctl list-unit-files | grep -q "asusd.service\|supergfxd.service"; then
+    if systemctl list-unit-files | grep -q "asusd.service"; then
         print_warning "⚠ Some systemd services may still be present"
         issues_found=true
     else
@@ -377,7 +362,7 @@ show_completion() {
     print_success "🎉 ASUS Linux tools have been completely removed from your system!"
     echo
     echo "=== WHAT WAS REMOVED ==="
-    echo "• asusctl and supergfxctl binaries"
+    echo "• asusctl binaries"
     echo "• All ASUS-related systemd services"
     echo "• Configuration files and udev rules"
     echo "• Desktop applications and icons"

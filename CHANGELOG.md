@@ -7,6 +7,8 @@ and this project follows Linux Mint release versioning with patch numbers.
 
 ## [Unreleased]
 
+- Remove supergfxctl following the announced phase out (https://wiki.archlinux.org/title/Supergfxctl)
+
 ## [22.3.1] - 2026-05-20
 
 ### Added

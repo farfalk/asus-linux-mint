@@ -59,10 +59,6 @@ jobs:
           curl -f -s -I https://gitlab.com/asus-linux/asusctl.git > /dev/null
           echo "✅ asusctl repository accessible"
           
-          # Check supergfxctl repository  
-          curl -f -s -I https://gitlab.com/asus-linux/supergfxctl.git > /dev/null
-          echo "✅ supergfxctl repository accessible"
-          
           # Check Rust installer
           curl -f -s -I https://sh.rustup.rs > /dev/null
           echo "✅ Rust installer accessible"
