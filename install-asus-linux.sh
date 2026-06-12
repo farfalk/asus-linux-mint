@@ -430,7 +430,7 @@ install_asusctl() {
     # Clone or update asusctl
     if [ ! -d "asusctl" ]; then
         print_status "Cloning asusctl repository..."
-        git clone https://gitlab.com/asus-linux/asusctl.git
+        git clone https://github.com/OpenGamingCollective/asusctl.git
     else
         print_status "Updating asusctl repository..."
         cd asusctl
