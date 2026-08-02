@@ -1,10 +1,11 @@
 # ASUS Linux Tools Installer for Linux Mint
 
-An automated installation script for [asusctl](https://gitlab.com/asus-linux/asusctl) on ASUS ROG/TUF laptops running **Linux Mint**.
+An automated installation script for [asusctl](https://github.com/OpenGamingCollective/asusctl) on ASUS ROG/TUF laptops running **Linux Mint**.
 
 ## 🚀 Features
 
 - **Automated installation** of latest asusctl for Linux Mint
+- **Release-tracking updates** packaged as a `.deb`, with rollback support
 - **System firmware updates** via fwupd for optimal hardware compatibility
 - **Kernel compatibility checking** with automatic upgrade options
 - **NVIDIA driver preparation** with nouveau blacklist configuration
@@ -101,6 +102,51 @@ By default, the installer includes `rog-control-center` (GUI).
 ASUS_INSTALL_ROG_GUI=0 ./install-asus-linux.sh
 ```
 
+## 🔄 Updating
+
+`update-asus-linux.sh` updates an existing installation to the latest **tagged release** of
+[asusctl](https://github.com/OpenGamingCollective/asusctl).
+
+Upstream publishes release tags but only ships Arch Linux binaries, so the script builds the
+pinned tag from source, then wraps the result in a `.deb` and installs it with apt. dpkg
+therefore owns the files, which gives you version tracking, clean upgrades, and rollback.
+
+```bash
+# See what's installed and what's available (changes nothing)
+./update-asus-linux.sh --check
+
+# Build and install the latest release
+./update-asus-linux.sh
+
+# Build a specific release
+./update-asus-linux.sh --tag 6.3.10
+
+# Go back to the previously installed version
+./update-asus-linux.sh --rollback
+```
+
+The first run replaces the original file-based install with the `asusctl-ogc` package. After
+that:
+
+```bash
+dpkg-query -W asusctl-ogc          # which version is installed
+sudo apt remove asusctl-ogc        # remove everything the package owns
+```
+
+Your settings in `/etc/asusd` (fan curves, profiles, LED settings) are **not** part of the
+package and survive upgrades and removal.
+
+### Optional: weekly update check
+
+```bash
+# Notifies when a new release appears; never builds or installs on its own
+./update-asus-linux.sh --install-timer
+./update-asus-linux.sh --remove-timer
+```
+
+> **Note:** the update still compiles asusctl from source, so it needs the Rust toolchain and
+> build dependencies installed by `install-asus-linux.sh`, and it takes several minutes.
+
 ## 📦 What Gets Installed
 
 ### Core Components
@@ -155,6 +201,16 @@ sudo journalctl -u asusd.service -f
 ```
 
 ## 🗑️ Uninstallation
+
+If you have updated with `update-asus-linux.sh`, asusctl is a normal package and apt removes
+it cleanly:
+
+```bash
+sudo apt remove asusctl-ogc
+```
+
+The script below is for installations that were never converted to a package, and also removes
+the extras the installer configured (nouveau blacklist, build directories, Rust toolchain).
 
 ### Quick Uninstall
 
@@ -257,7 +313,7 @@ When reporting issues, please include:
 
 For more help, visit:
 - [ASUS Linux Community](https://asus-linux.org/)
-- [asusctl GitLab Issues](https://gitlab.com/asus-linux/asusctl/-/issues)
+- [asusctl GitHub Issues](https://github.com/OpenGamingCollective/asusctl/issues)
 
 ## 📄 License
 

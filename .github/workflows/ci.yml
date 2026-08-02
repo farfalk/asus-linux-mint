@@ -38,9 +38,12 @@ jobs:
           
           echo "Checking uninstall script syntax..."
           bash -n uninstall-asus-linux.sh
-          
+
+          echo "Checking update script syntax..."
+          bash -n update-asus-linux.sh
+
           echo "Making scripts executable..."
-          chmod +x install-asus-linux.sh uninstall-asus-linux.sh
+          chmod +x install-asus-linux.sh uninstall-asus-linux.sh update-asus-linux.sh
           
           echo "✅ All scripts have valid syntax"
 
@@ -53,10 +56,10 @@ jobs:
 
       - name: Check external URLs
         run: |
-          echo "Checking GitLab repositories accessibility..."
-          
-          # Check asusctl repository
-          curl -f -s -I https://gitlab.com/asus-linux/asusctl.git > /dev/null
+          echo "Checking upstream repositories accessibility..."
+
+          # Check asusctl repository (moved to the OpenGamingCollective org)
+          curl -f -s -I https://github.com/OpenGamingCollective/asusctl > /dev/null
           echo "✅ asusctl repository accessible"
           
           # Check Rust installer
@@ -97,6 +100,15 @@ jobs:
           
           if grep -q "print_header" uninstall-asus-linux.sh; then
             echo "✅ Uninstall script has proper structure"
+          fi
+
+          echo "Testing update script basic execution..."
+          chmod +x update-asus-linux.sh
+          ./update-asus-linux.sh --help > /dev/null
+          echo "✅ Update script help works"
+
+          if grep -q "SCRIPT_VERSION" update-asus-linux.sh; then
+            echo "✅ Update script contains version information"
           fi
 
   test-distributions:

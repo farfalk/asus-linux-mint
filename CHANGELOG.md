@@ -7,8 +7,18 @@ and this project follows Linux Mint release versioning with patch numbers.
 
 ## [Unreleased]
 
+### Added
+- `update-asus-linux.sh`: update an existing installation to the latest upstream release tag. The pinned tag is built from source, staged with upstream's own Makefile rules, wrapped in an `asusctl-ogc` `.deb` and installed with apt, so dpkg tracks the installed version, removes files dropped by upstream on upgrade, and makes rollback possible. Supports `--check`, `--tag`, `--rollback`, `--no-gui` and an optional notify-only weekly systemd timer.
+- README: "Updating" section covering the update, rollback and package-removal workflow.
+
+### Changed
 - change asusctl repository to https://github.com/OpenGamingCollective/asusctl following gitlab repo archival
 - Remove supergfxctl following the announced phase out (https://wiki.archlinux.org/title/Supergfxctl)
+- CI: check `update-asus-linux.sh`, and validate the GitHub asusctl repository instead of the archived GitLab one.
+
+### Fixed
+- Installer: drop `cargo build --locked`. Upstream does not commit a `Cargo.lock`, so cargo refuses to create one and every build failed with "cannot create the lock file ... because --locked was passed". Upstream removed `--locked` from their own Makefile for the same reason.
+- Updater: install `asusd-user.service` explicitly. Upstream declares `install-data-asusd_user` as `.PHONY` but gives it no recipe, so `make install` silently skips the user unit.
 
 ## [22.3.1] - 2026-05-20
 
