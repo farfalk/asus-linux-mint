@@ -8,6 +8,7 @@ and this project follows Linux Mint release versioning with patch numbers.
 ## [Unreleased]
 
 - change asusctl repository to https://github.com/OpenGamingCollective/asusctl following gitlab repo archival
+- Remove supergfxctl following the announced phase out (https://wiki.archlinux.org/title/Supergfxctl)
 
 ## [22.3.1] - 2026-05-20
 
