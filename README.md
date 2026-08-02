@@ -200,7 +200,7 @@ git -C ~/.local/src/asus-linux/asusctl describe --tags
 
 ```bash
 # Check ASUS laptop status
-asusctl -s
+asusctl info
 
 # Set fan curve to performance mode
 asusctl fan-curve -p performance

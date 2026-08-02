@@ -551,7 +551,7 @@ verify_installation() {
     
     # Check if binaries are accessible
     if command -v asusctl &> /dev/null; then
-        version=$(asusctl --version 2>/dev/null || echo "unknown")
+        version=$(asusctl info 2>/dev/null | head -n 1 || echo "unknown")
         print_status "✓ asusctl: $version"
     else
         print_error "✗ asusctl command not found in PATH."
@@ -581,7 +581,7 @@ show_status() {
     echo
     echo "=== ASUSCTL STATUS ==="
     if command -v asusctl &> /dev/null; then
-        asusctl -s 2>/dev/null || print_warning "Could not get asusctl status. Service may still be starting."
+        asusctl info 2>/dev/null || print_warning "Could not get asusctl status. Service may still be starting."
     fi
     
     if [[ "$INSTALL_ROG_GUI" == "1" ]]; then
@@ -590,7 +590,7 @@ show_status() {
         echo "• GUI application: Re-run installer with ASUS_INSTALL_ROG_GUI=1 to install 'rog-control-center'"
     fi
     echo "• If cargo/rustup isn't in PATH: run 'source ~/.cargo/env' or open a new terminal"
-    echo "• Note: Fan curve control depends on laptop model/firmware; if it doesn't appear in 'asusctl -s', it's not supported."
+    echo "• Note: Fan curve control depends on laptop model/firmware; if it doesn't appear in 'asusctl info', it's not supported."
     echo
     print_warning "IMPORTANT: You may need to log out and back in (or reboot) for group changes to take effect."
     print_warning "Some GPU mode changes require a reboot to take effect."
@@ -598,7 +598,7 @@ show_status() {
     echo
     echo "=== NEXT STEPS ==="
     echo "1. Reboot to ensure all changes take effect"
-    echo "2. Check ASUS controls with: asusctl -s"
+    echo "2. Check ASUS controls with: asusctl info"
     if [[ "$INSTALL_ROG_GUI" == "1" ]]; then
         echo "4. Launch 'ROG Control Center' from your application menu"
     else

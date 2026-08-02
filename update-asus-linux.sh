@@ -406,8 +406,11 @@ if [ "$1" = "configure" ]; then
     # asusd.service has no [Install] section: it is Type=dbus with a BusName and
     # is therefore D-Bus activated and "static". enable/disable do not apply.
     if [ -z "$2" ]; then
-        # Fresh install: start it now rather than waiting for the first D-Bus call
-        systemctl start asusd.service || true
+        # Fresh install. Note this also covers taking over an unmanaged install,
+        # where an old asusd is already running: "start" would be a no-op and
+        # leave the previous binary serving D-Bus, so restart unconditionally.
+        # restart also starts the unit when it is not running.
+        systemctl restart asusd.service || true
     else
         # Upgrade: only restart if it was already running
         systemctl try-restart asusd.service || true
@@ -723,7 +726,7 @@ show_post_update() {
     echo
     echo "=== ASUSCTL STATUS ==="
     if command -v asusctl &> /dev/null; then
-        asusctl -s 2>/dev/null || print_warning "Could not get asusctl status. The service may still be starting."
+        asusctl info 2>/dev/null || print_warning "Could not get asusctl status. The service may still be starting."
     fi
 
     echo
