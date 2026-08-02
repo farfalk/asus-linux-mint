@@ -445,11 +445,14 @@ install_asusctl() {
     fi
 
     print_status "Building asusctl (daemon + CLI) (this may take several minutes)..."
-    cargo build --release --locked -p asusctl -p asusd -p asusd-user
+    # No --locked: upstream does not commit a Cargo.lock, so cargo refuses to
+    # create one and the build fails. Upstream removed --locked from their own
+    # Makefile for the same reason.
+    cargo build --release -p asusctl -p asusd -p asusd-user
     if [[ "$INSTALL_ROG_GUI" == "1" ]]; then
         print_status "Building rog-control-center (GUI)..."
         # Linux Mint desktops commonly run X11; enable X11 backend to avoid runtime panics.
-        cargo build --release --locked -p rog-control-center --features "rog-control-center/x11"
+        cargo build --release -p rog-control-center --features "rog-control-center/x11"
     fi
 
     print_status "Installing asusctl and asusd..."
