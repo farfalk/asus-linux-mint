@@ -12,6 +12,7 @@ and this project follows Linux Mint release versioning with patch numbers.
 - README: "Updating" section covering the update, rollback and package-removal workflow.
 
 ### Changed
+- Uninstaller: detect whether the installation is the `asusctl-ogc` package or an unmanaged file-based one. Packaged installs are removed with `apt remove` so dpkg's database stays consistent, with an optional prompt to clear the rollback package cache; unmanaged installs keep the previous file-by-file removal. Also removes `asus-shutdown`, `asus-shutdown.service`, the renamed `org.opengamingcollective.*` desktop and metainfo files, and `/usr/share/asusctl`, none of which the old path-based lists covered.
 - change asusctl repository to https://github.com/OpenGamingCollective/asusctl following gitlab repo archival
 - Remove supergfxctl following the announced phase out (https://wiki.archlinux.org/title/Supergfxctl)
 - CI: check `update-asus-linux.sh`, and validate the GitHub asusctl repository instead of the archived GitLab one.

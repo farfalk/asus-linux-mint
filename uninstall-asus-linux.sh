@@ -24,8 +24,13 @@
 set -euo pipefail
 
 # Script configuration
-SCRIPT_VERSION="22.3.2"
+SCRIPT_VERSION="22.3.3"
 BASE_DIR="${ASUS_BUILD_DIR:-$HOME/.local/src/asus-linux}"
+
+# Package produced by update-asus-linux.sh. When it is installed, dpkg owns the
+# files and must be the one to remove them.
+PKG_NAME="asusctl-ogc"
+PACKAGED=0
 
 # Function for colored output
 print_status() {
@@ -53,13 +58,38 @@ print_header() {
     echo -e "\e[0m"
 }
 
+# Detect how asusctl was installed.
+#
+# update-asus-linux.sh converts the original file-based install into a .deb. If
+# that package is present, deleting its files by hand would leave dpkg believing
+# they are still installed, so removal has to go through apt instead.
+detect_install_type() {
+    local version
+    version="$(dpkg-query -W -f='${Version}' "$PKG_NAME" 2>/dev/null || true)"
+
+    if [ -n "$version" ]; then
+        PACKAGED=1
+        print_status "Detected packaged installation: $PKG_NAME $version"
+        print_status "Removal will go through apt so the package database stays consistent."
+    else
+        PACKAGED=0
+        print_status "Detected unmanaged installation (files installed directly)."
+        print_status "Removal will delete the installed files individually."
+    fi
+    echo
+}
+
 # Confirm uninstallation
 confirm_uninstall() {
     print_warning "This will completely remove ASUS Linux tools from your system:"
-    echo "  • asusctl binaries"
-    echo "  • All systemd services (asusd, asusd-user)"
-    echo "  • Configuration files and udev rules"
-    echo "  • Desktop files and icons"
+    if [ "$PACKAGED" -eq 1 ]; then
+        echo "  • The $PKG_NAME package (binaries, services, udev rules, desktop files)"
+    else
+        echo "  • asusctl binaries"
+        echo "  • All systemd services (asusd, asusd-user)"
+        echo "  • Configuration files and udev rules"
+        echo "  • Desktop files and icons"
+    fi
     echo "  • asusd runtime configuration directory (optional)"
     echo "  • Nouveau driver blacklist (optional)"
     echo "  • Build directories (optional)"
@@ -71,6 +101,46 @@ confirm_uninstall() {
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         print_status "Uninstall cancelled by user."
         exit 0
+    fi
+}
+
+# Remove the package. Its prerm stops asusd, and dpkg removes every file it
+# owns, including the ones this script's hardcoded lists never knew about.
+remove_package() {
+    print_status "Removing the $PKG_NAME package..."
+
+    # The user unit is enabled per-user, which the package cannot undo as root
+    if systemctl --user list-unit-files 2>/dev/null | grep -q "^asusd-user\.service"; then
+        systemctl --user stop asusd-user.service 2>/dev/null || true
+        systemctl --user disable asusd-user.service 2>/dev/null || true
+        print_status "✓ asusd-user.service stopped and disabled."
+    fi
+
+    sudo apt remove -y "$PKG_NAME"
+    print_status "✓ $PKG_NAME removed."
+
+    sudo systemctl daemon-reload
+    sudo gtk-update-icon-cache /usr/share/icons/hicolor/ 2>/dev/null || true
+}
+
+# Offer to drop the packages cached for rollback by update-asus-linux.sh
+remove_package_cache() {
+    local cache_dir="/var/cache/asus-linux-mint"
+
+    [ -d "$cache_dir" ] || return 0
+
+    echo
+    print_warning "Cached packages found in $cache_dir:"
+    find "$cache_dir" -maxdepth 1 -name '*.deb' -printf '    %f\n'
+    print_warning "These are kept so update-asus-linux.sh --rollback can reinstall them."
+
+    read -p "Remove cached packages? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        sudo rm -rf "$cache_dir"
+        print_status "✓ Removed $cache_dir"
+    else
+        print_status "Cached packages preserved."
     fi
 }
 
@@ -105,6 +175,7 @@ remove_binaries() {
         "/usr/bin/asusctl"
         "/usr/bin/asusd"
         "/usr/bin/asusd-user"
+        "/usr/bin/asus-shutdown"
         "/usr/bin/rog-control-center"
         "/usr/local/bin/asusctl"
         "/usr/local/bin/asusd"
@@ -126,6 +197,7 @@ remove_service_files() {
     
     local service_files=(
         "/usr/lib/systemd/system/asusd.service"
+        "/usr/lib/systemd/system/asus-shutdown.service"
         "/usr/lib/systemd/user/asusd-user.service"
     )
     
@@ -160,6 +232,7 @@ remove_config_files() {
     local data_dirs=(
         "/usr/share/asusd"
         "/usr/share/rog-gui"
+        "/usr/share/asusctl"
     )
     
     for data_dir in "${data_dirs[@]}"; do
@@ -232,8 +305,12 @@ remove_nouveau_blacklist() {
 remove_desktop_files() {
     print_status "Removing desktop files and icons..."
     
+    # Upstream renamed the desktop file to a reverse-DNS id; older installs still
+    # carry the short name, so clean up both.
     local desktop_files=(
         "/usr/share/applications/rog-control-center.desktop"
+        "/usr/share/applications/org.opengamingcollective.rog-control-center.desktop"
+        "/usr/share/metainfo/org.opengamingcollective.rog-control-center.metainfo.xml"
     )
     
     for desktop_file in "${desktop_files[@]}"; do
@@ -327,7 +404,15 @@ remove_rust() {
 verify_removal() {
     print_status "Verifying removal..."
     local issues_found=false
-    
+
+    # The package must be gone from dpkg's database, not just off the filesystem
+    if dpkg-query -W -f='${Status}' "$PKG_NAME" 2>/dev/null | grep -q "^install"; then
+        print_warning "⚠ $PKG_NAME is still registered with dpkg"
+        issues_found=true
+    else
+        print_status "✓ $PKG_NAME is not installed"
+    fi
+
     # Check if binaries still exist
     local binaries=("asusctl" "asusd" "rog-control-center")
     for binary in "${binaries[@]}"; do
@@ -398,14 +483,23 @@ main() {
         exit 1
     fi
     
+    detect_install_type
     confirm_uninstall
-    stop_services
-    remove_binaries
-    remove_service_files
-    remove_config_files
+
+    if [ "$PACKAGED" -eq 1 ]; then
+        # dpkg owns the files; removing them by hand would corrupt its database
+        remove_package
+        remove_package_cache
+    else
+        stop_services
+        remove_binaries
+        remove_service_files
+        remove_config_files
+        remove_desktop_files
+    fi
+
     remove_asusd_config
     remove_nouveau_blacklist
-    remove_desktop_files
     remove_user_groups
     remove_build_dirs
     remove_rust

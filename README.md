@@ -143,8 +143,8 @@ sudo apt remove asusctl-ogc        # remove everything the package owns
 Your settings in `/etc/asusd` (fan curves, profiles, LED settings) are **not** part of the
 package and survive upgrades and removal.
 
-> **Once you have converted, stop using `uninstall-asus-linux.sh`.** Deleting package-owned
-> files behind dpkg's back leaves the package database inconsistent. Use `apt remove` instead.
+`uninstall-asus-linux.sh` detects which of the two layouts you have and removes it the right
+way, so it is safe to use either before or after converting.
 
 ### Rolling back
 
@@ -225,15 +225,18 @@ sudo journalctl -u asusd.service -f
 
 ## 🗑️ Uninstallation
 
-If you have updated with `update-asus-linux.sh`, asusctl is a normal package and apt removes
-it cleanly:
+The uninstaller detects how asusctl was installed and adapts:
 
-```bash
-sudo apt remove asusctl-ogc
-```
+- **Packaged** (you have run `update-asus-linux.sh`) — removes it with `apt remove asusctl-ogc`,
+  so dpkg's database stays consistent, and offers to clear the rollback package cache.
+- **Unmanaged** (installed directly by `install-asus-linux.sh`) — deletes the installed files
+  individually.
 
-The script below is for installations that were never converted to a package, and also removes
-the extras the installer configured (nouveau blacklist, build directories, Rust toolchain).
+Either way it then offers to remove the extras the installer configured: the `/etc/asusd`
+settings, the nouveau blacklist, the build directory and the Rust toolchain.
+
+If you only want to remove asusctl itself from a packaged install, `sudo apt remove asusctl-ogc`
+is enough on its own.
 
 ### Quick Uninstall
 
