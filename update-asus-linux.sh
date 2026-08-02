@@ -470,6 +470,25 @@ install_deb() {
     sudo apt install -y --allow-downgrades "$deb_path"
 }
 
+# A GUI that was already running keeps executing the replaced binary: Linux
+# holds the old inode open, and /proc/PID/exe then reads "... (deleted)".
+# Nothing restarts it for us, so tell the user it is stale.
+warn_stale_gui() {
+    local version="$1"
+    local pids p
+
+    mapfile -t pids < <(pgrep -f '[r]og-control-center' 2>/dev/null || true)
+    [ ${#pids[@]} -gt 0 ] || return 0
+
+    for p in "${pids[@]}"; do
+        if [[ "$(readlink "/proc/$p/exe" 2>/dev/null)" == *"(deleted)"* ]]; then
+            print_warning "rog-control-center (PID $p) is still running the previous binary."
+            print_warning "Quit and relaunch it to use $version."
+            return 0
+        fi
+    done
+}
+
 # asusd-user.service is a user unit with an [Install] section, so unlike
 # asusd.service it does need enabling. The package's postinst runs as root and
 # cannot do that for the invoking user, so handle it here.
@@ -610,6 +629,7 @@ do_update() {
     deb_path="$(build_deb "$target")"
     install_deb "$deb_path"
     enable_user_service
+    warn_stale_gui "$target"
     prune_cache
 
     echo
