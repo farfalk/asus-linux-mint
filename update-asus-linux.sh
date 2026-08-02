@@ -403,11 +403,13 @@ if [ "$1" = "configure" ]; then
     udevadm control --reload-rules || true
     gtk-update-icon-cache /usr/share/icons/hicolor/ 2>/dev/null || true
 
+    # asusd.service has no [Install] section: it is Type=dbus with a BusName and
+    # is therefore D-Bus activated and "static". enable/disable do not apply.
     if [ -z "$2" ]; then
-        # Fresh install
-        systemctl enable --now asusd.service || true
+        # Fresh install: start it now rather than waiting for the first D-Bus call
+        systemctl start asusd.service || true
     else
-        # Upgrade: only restart if the admin had it running
+        # Upgrade: only restart if it was already running
         systemctl try-restart asusd.service || true
     fi
 fi
@@ -420,8 +422,8 @@ EOF
 set -e
 
 if [ "$1" = "remove" ]; then
+    # No disable: the unit is static (D-Bus activated), so it is never enabled.
     systemctl stop asusd.service || true
-    systemctl disable asusd.service || true
 fi
 
 exit 0
@@ -463,6 +465,24 @@ install_deb() {
 
     print_status "Installing $(basename "$deb_path")..."
     sudo apt install -y --allow-downgrades "$deb_path"
+}
+
+# asusd-user.service is a user unit with an [Install] section, so unlike
+# asusd.service it does need enabling. The package's postinst runs as root and
+# cannot do that for the invoking user, so handle it here.
+enable_user_service() {
+    systemctl --user daemon-reload 2>/dev/null || true
+
+    if ! systemctl --user list-unit-files 2>/dev/null | grep -q "^asusd-user\.service"; then
+        print_warning "asusd-user.service is not visible in this session."
+        print_warning "After the next login, enable it with:"
+        print_warning "  systemctl --user enable --now asusd-user.service"
+        return 0
+    fi
+
+    systemctl --user enable asusd-user.service 2>/dev/null || true
+    systemctl --user restart asusd-user.service 2>/dev/null || true
+    print_status "asusd-user.service enabled and restarted for $USER."
 }
 
 # Keep the three most recent packages so rollback has something to fall back to
@@ -586,6 +606,7 @@ do_update() {
     local deb_path
     deb_path="$(build_deb "$target")"
     install_deb "$deb_path"
+    enable_user_service
     prune_cache
 
     echo
