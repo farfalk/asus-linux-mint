@@ -24,7 +24,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
-          shellcheck -x -S warning install-asus-linux.sh uninstall-asus-linux.sh tests/*.sh
+          shellcheck -x -S warning install-asus-linux.sh uninstall-asus-linux.sh update-asus-linux.sh tests/*.sh
 
   syntax-check:
     name: Syntax Validation
@@ -151,6 +151,7 @@ jobs:
         run: |
           bash tests/test-installer.sh
           bash tests/test-uninstaller.sh
+          bash tests/test-update.sh
 
   security-scan:
     name: Installer Security Contracts
