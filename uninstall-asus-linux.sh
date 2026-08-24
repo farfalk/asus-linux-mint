@@ -1,21 +1,20 @@
 #!/bin/bash
 
-# ASUS Linux Tools Uninstall Script for Linux Mint 22.3
-# Version: 22.3.0
+# ASUS Linux Tools Uninstall Script for Linux Mint 22.3 and Ubuntu 24.04
+# Version: 22.3.3
 #
-# This script removes asusctl and all associated files,
-# services, and configurations that were installed by install-asus-linux.sh
+# This script removes asusctl, optional/legacy supergfxctl, and files managed
+# by install-asus-linux.sh. User-customised asusd settings are opt-in cleanup.
 #
 # Requirements:
-# - Linux Mint 22.3 (Cinnamon, MATE, or Xfce edition)
+# - Linux Mint 22.3 or Ubuntu 24.04
 # - Sudo privileges
-# - Previously installed asusctl via install-asus-linux.sh
+# - Previously installed asusctl/supergfxctl via install-asus-linux.sh
 # 
-# Usage:
-#   curl -sSL https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/uninstall-asus-linux.sh | bash
-#   
-#   Or download and run locally:
-#   wget https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/uninstall-asus-linux.sh
+# Usage (review before running because this script uses sudo):
+#   curl --proto '=https' --tlsv1.2 -fLo uninstall-asus-linux.sh \
+#     https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/uninstall-asus-linux.sh
+#   less uninstall-asus-linux.sh
 #   chmod +x uninstall-asus-linux.sh
 #   ./uninstall-asus-linux.sh
 # 
@@ -25,12 +24,8 @@ set -euo pipefail
 
 # Script configuration
 SCRIPT_VERSION="22.3.3"
-BASE_DIR="${ASUS_BUILD_DIR:-$HOME/.local/src/asus-linux}"
-
-# Package produced by update-asus-linux.sh. When it is installed, dpkg owns the
-# files and must be the one to remove them.
-PKG_NAME="asusctl-ogc"
-PACKAGED=0
+ACCOUNT_HOME=$(getent passwd "$(id -u)" | cut -d: -f6)
+BASE_DIR="${ASUS_BUILD_DIR:-$ACCOUNT_HOME/.local/src/asus-linux}"
 
 # Function for colored output
 print_status() {
@@ -58,89 +53,62 @@ print_header() {
     echo -e "\e[0m"
 }
 
-# Detect how asusctl was installed.
-#
-# update-asus-linux.sh converts the original file-based install into a .deb. If
-# that package is present, deleting its files by hand would leave dpkg believing
-# they are still installed, so removal has to go through apt instead.
-detect_install_type() {
-    local version
-    version="$(dpkg-query -W -f='${Version}' "$PKG_NAME" 2>/dev/null || true)"
+prompt_yes_no() {
+    local prompt="$1"
+    local reply
 
-    if [ -n "$version" ]; then
-        PACKAGED=1
-        print_status "Detected packaged installation: $PKG_NAME $version"
-        print_status "Removal will go through apt so the package database stays consistent."
-    else
-        PACKAGED=0
-        print_status "Detected unmanaged installation (files installed directly)."
-        print_status "Removal will delete the installed files individually."
+    if [ ! -r /dev/tty ]; then
+        print_error "Interactive confirmation requires a terminal."
+        return 1
     fi
+
+    read -r -p "$prompt" -n 1 reply < /dev/tty
     echo
+    [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+validate_build_directory() {
+    local canonical_base
+    local canonical_home
+
+    if [[ "$BASE_DIR" != /* ]]; then
+        print_error "ASUS_BUILD_DIR must be an absolute path."
+        return 1
+    fi
+
+    if [ -L "$BASE_DIR" ]; then
+        print_error "Refusing symlinked build directory: $BASE_DIR"
+        return 1
+    fi
+
+    if [[ -z "$ACCOUNT_HOME" ]]; then
+        print_error "Could not determine the invoking account's home directory."
+        return 1
+    fi
+    canonical_home=$(realpath -m -- "$ACCOUNT_HOME")
+    canonical_base=$(realpath -m -- "$BASE_DIR")
+    if [[ "$canonical_base" != "$canonical_home"/* ]]; then
+        print_error "ASUS_BUILD_DIR must remain below your account home: $canonical_home"
+        return 1
+    fi
 }
 
 # Confirm uninstallation
 confirm_uninstall() {
-    print_warning "This will completely remove ASUS Linux tools from your system:"
-    if [ "$PACKAGED" -eq 1 ]; then
-        echo "  • The $PKG_NAME package (binaries, services, udev rules, desktop files)"
-    else
-        echo "  • asusctl binaries"
-        echo "  • All systemd services (asusd, asusd-user)"
-        echo "  • Configuration files and udev rules"
-        echo "  • Desktop files and icons"
-    fi
+    print_warning "This will remove files managed by the ASUS Linux tools installer:"
+    echo "  • asusctl binaries and optional/legacy supergfxctl binaries"
+    echo "  • All systemd services (asusd, asus-shutdown, asusd-user, and optional supergfxd)"
+    echo "  • Configuration files and udev rules"
+    echo "  • Desktop files and icons"
     echo "  • asusd runtime configuration directory (optional)"
     echo "  • Nouveau driver blacklist (optional)"
     echo "  • Build directories (optional)"
     echo
     print_warning "Your laptop will lose ASUS-specific hardware control features."
     echo
-    read -p "Are you sure you want to continue? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    if ! prompt_yes_no "Are you sure you want to continue? (y/N): "; then
         print_status "Uninstall cancelled by user."
         exit 0
-    fi
-}
-
-# Remove the package. Its prerm stops asusd, and dpkg removes every file it
-# owns, including the ones this script's hardcoded lists never knew about.
-remove_package() {
-    print_status "Removing the $PKG_NAME package..."
-
-    # The user unit is enabled per-user, which the package cannot undo as root
-    if systemctl --user list-unit-files 2>/dev/null | grep -q "^asusd-user\.service"; then
-        systemctl --user stop asusd-user.service 2>/dev/null || true
-        systemctl --user disable asusd-user.service 2>/dev/null || true
-        print_status "✓ asusd-user.service stopped and disabled."
-    fi
-
-    sudo apt remove -y "$PKG_NAME"
-    print_status "✓ $PKG_NAME removed."
-
-    sudo systemctl daemon-reload
-    sudo gtk-update-icon-cache /usr/share/icons/hicolor/ 2>/dev/null || true
-}
-
-# Offer to drop the packages cached for rollback by update-asus-linux.sh
-remove_package_cache() {
-    local cache_dir="/var/cache/asus-linux-mint"
-
-    [ -d "$cache_dir" ] || return 0
-
-    echo
-    print_warning "Cached packages found in $cache_dir:"
-    find "$cache_dir" -maxdepth 1 -name '*.deb' -printf '    %f\n'
-    print_warning "These are kept so update-asus-linux.sh --rollback can reinstall them."
-
-    read -p "Remove cached packages? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        sudo rm -rf "$cache_dir"
-        print_status "✓ Removed $cache_dir"
-    else
-        print_status "Cached packages preserved."
     fi
 }
 
@@ -149,17 +117,30 @@ stop_services() {
     print_status "Stopping and disabling ASUS services..."
     
     # Stop and disable asusd-user service (user-level)
-    if systemctl --user list-unit-files | grep -q "asusd-user.service"; then
+    if systemctl --user cat asusd-user.service &> /dev/null; then
         systemctl --user stop asusd-user.service 2>/dev/null || true
         systemctl --user disable asusd-user.service 2>/dev/null || true
         print_status "✓ asusd-user.service stopped and disabled."
     fi
+
+    if systemctl cat asus-shutdown.service &> /dev/null; then
+        sudo systemctl stop asus-shutdown.service 2>/dev/null || true
+        sudo systemctl disable asus-shutdown.service 2>/dev/null || true
+        print_status "✓ asus-shutdown.service stopped and disabled."
+    fi
     
     # Stop and disable asusd service (system-level)
-    if systemctl list-unit-files | grep -q "asusd.service"; then
+    if systemctl cat asusd.service &> /dev/null; then
         sudo systemctl stop asusd.service 2>/dev/null || true
         sudo systemctl disable asusd.service 2>/dev/null || true
         print_status "✓ asusd.service stopped and disabled."
+    fi
+    
+    # Stop and disable supergfxd service (system-level)
+    if systemctl cat supergfxd.service &> /dev/null; then
+        sudo systemctl stop supergfxd.service 2>/dev/null || true
+        sudo systemctl disable supergfxd.service 2>/dev/null || true
+        print_status "✓ supergfxd.service stopped and disabled."
     fi
     
     # Reload systemd
@@ -177,10 +158,8 @@ remove_binaries() {
         "/usr/bin/asusd-user"
         "/usr/bin/asus-shutdown"
         "/usr/bin/rog-control-center"
-        "/usr/local/bin/asusctl"
-        "/usr/local/bin/asusd"
-        "/usr/local/bin/asusd-user"
-        "/usr/local/bin/rog-control-center"
+        "/usr/bin/supergfxctl"
+        "/usr/bin/supergfxd"
     )
     
     for binary in "${binaries[@]}"; do
@@ -198,7 +177,9 @@ remove_service_files() {
     local service_files=(
         "/usr/lib/systemd/system/asusd.service"
         "/usr/lib/systemd/system/asus-shutdown.service"
+        "/usr/lib/systemd/system/supergfxd.service"
         "/usr/lib/systemd/user/asusd-user.service"
+        "/usr/lib/systemd/system-preset/supergfxd.preset"
     )
     
     for service_file in "${service_files[@]}"; do
@@ -217,7 +198,9 @@ remove_config_files() {
     
     local config_files=(
         "/usr/share/dbus-1/system.d/asusd.conf"
+        "/usr/share/dbus-1/system.d/org.supergfxctl.Daemon.conf"
         "/usr/lib/udev/rules.d/99-asusd.rules"
+        "/usr/lib/udev/rules.d/90-supergfxd-nvidia-pm.rules"
         "/usr/share/X11/xorg.conf.d/90-nvidia-screen-G05.conf"
     )
     
@@ -232,7 +215,6 @@ remove_config_files() {
     local data_dirs=(
         "/usr/share/asusd"
         "/usr/share/rog-gui"
-        "/usr/share/asusctl"
     )
     
     for data_dir in "${data_dirs[@]}"; do
@@ -253,9 +235,7 @@ remove_asusd_config() {
         print_warning "asusd configuration directory found: $asusd_config_dir"
         print_warning "This directory may contain user-customised fan curves, profiles, and LED settings."
         echo
-        read -p "Remove asusd configuration directory? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if prompt_yes_no "Remove asusd configuration directory? (y/N): "; then
             sudo rm -rf "$asusd_config_dir"
             print_status "✓ Removed $asusd_config_dir"
         else
@@ -271,14 +251,20 @@ remove_nouveau_blacklist() {
     print_status "Checking for nouveau blacklist configuration..."
     
     local blacklist_file="/etc/modprobe.d/blacklist-nouveau.conf"
+    local legacy_hash="3631c609cb22794edd9d980dbf6709dfd5ff13d504483334911e7c7025b0f9a1"
+    local actual_hash
     
     if [ -f "$blacklist_file" ]; then
         print_warning "Nouveau blacklist configuration found: $blacklist_file"
-        print_warning "This file blacklists the nouveau driver to allow NVIDIA proprietary drivers."
+        actual_hash=$(sha256sum "$blacklist_file" | awk '{print $1}')
+        if [[ "$actual_hash" != "$legacy_hash" ]]; then
+            print_warning "The file does not exactly match the legacy installer content."
+            print_warning "It will be preserved to avoid deleting configuration owned by you or another package."
+            return 0
+        fi
+        print_warning "This file exactly matches the configuration created by older installer releases."
         echo
-        read -p "Remove nouveau blacklist configuration? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if prompt_yes_no "Remove legacy nouveau blacklist configuration? (y/N): "; then
             # Show current contents before removal
             print_status "Current contents of $blacklist_file:"
             sudo cat "$blacklist_file" | sed 's/^/    /' || true
@@ -305,8 +291,6 @@ remove_nouveau_blacklist() {
 remove_desktop_files() {
     print_status "Removing desktop files and icons..."
     
-    # Upstream renamed the desktop file to a reverse-DNS id; older installs still
-    # carry the short name, so clean up both.
     local desktop_files=(
         "/usr/share/applications/rog-control-center.desktop"
         "/usr/share/applications/org.opengamingcollective.rog-control-center.desktop"
@@ -320,48 +304,33 @@ remove_desktop_files() {
         fi
     done
     
-    # Remove icons
-    local icon_patterns=(
-        "/usr/share/icons/hicolor/*/apps/rog-control-center.png"
-        "/usr/share/icons/hicolor/*/apps/asus_notif_*.png"
-        "/usr/share/icons/hicolor/*/status/gpu-*.svg"
-        "/usr/share/icons/hicolor/*/status/notification-reboot.svg"
+    # Remove only filenames installed by this project. Broad wildcards could
+    # delete similarly named icons belonging to another package.
+    local icon_files=(
+        "/usr/share/icons/hicolor/512x512/apps/rog-control-center.png"
+        "/usr/share/icons/hicolor/512x512/apps/asus_notif_yellow.png"
+        "/usr/share/icons/hicolor/512x512/apps/asus_notif_green.png"
+        "/usr/share/icons/hicolor/512x512/apps/asus_notif_blue.png"
+        "/usr/share/icons/hicolor/512x512/apps/asus_notif_red.png"
+        "/usr/share/icons/hicolor/512x512/apps/asus_notif_orange.png"
+        "/usr/share/icons/hicolor/512x512/apps/asus_notif_white.png"
+        "/usr/share/icons/hicolor/scalable/status/gpu-compute.svg"
+        "/usr/share/icons/hicolor/scalable/status/gpu-hybrid.svg"
+        "/usr/share/icons/hicolor/scalable/status/gpu-integrated.svg"
+        "/usr/share/icons/hicolor/scalable/status/gpu-nvidia.svg"
+        "/usr/share/icons/hicolor/scalable/status/gpu-vfio.svg"
+        "/usr/share/icons/hicolor/scalable/status/notification-reboot.svg"
     )
     
-    for pattern in "${icon_patterns[@]}"; do
-        for icon_file in $pattern; do
-            if [ -f "$icon_file" ]; then
-                sudo rm -f "$icon_file"
-                print_status "✓ Removed $icon_file"
-            fi
-        done 2>/dev/null || true
+    for icon_file in "${icon_files[@]}"; do
+        if [ -f "$icon_file" ]; then
+            sudo rm -f "$icon_file"
+            print_status "✓ Removed $icon_file"
+        fi
     done
     
     # Update icon cache
     sudo gtk-update-icon-cache /usr/share/icons/hicolor/ 2>/dev/null || true
-}
-
-# Remove user from groups (optional)
-remove_user_groups() {
-    print_status "Checking user group membership..."
-    
-    # Note: We don't automatically remove users from 'users' or 'wheel' groups
-    # as these may be needed by other applications
-    print_warning "Note: User '$USER' was added to groups during installation."
-    print_warning "Groups like 'users' or 'wheel' are not automatically removed as they may be needed by other applications."
-    
-    echo
-    read -p "Remove user '$USER' from 'users' group? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        if groups "$USER" | grep -q "\busers\b"; then
-            sudo gpasswd -d "$USER" users 2>/dev/null || true
-            print_status "✓ Removed user '$USER' from 'users' group."
-            print_warning "You may need to log out and back in for group changes to take effect."
-        else
-            print_status "User '$USER' is not in 'users' group."
-        fi
-    fi
 }
 
 # Remove build directories
@@ -371,9 +340,7 @@ remove_build_dirs() {
         print_warning "Build directory found: $BASE_DIR"
         print_warning "This contains the source code and build artifacts."
         
-        read -p "Remove build directory? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if prompt_yes_no "Remove build directory? (y/N): "; then
             rm -rf "$BASE_DIR"
             print_status "✓ Removed build directory: $BASE_DIR"
         else
@@ -382,61 +349,52 @@ remove_build_dirs() {
     fi
 }
 
-# Optionally remove Rust toolchain
-remove_rust() {
-    if command -v rustup &> /dev/null; then
-        echo
-        print_warning "Rust toolchain detected (rustup)."
-        print_warning "This may have been installed by the ASUS installer or may be used by other applications."
-        
-        read -p "Remove Rust toolchain (rustup)? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            rustup self uninstall -y 2>/dev/null || true
-            print_status "✓ Removed Rust toolchain."
-        else
-            print_status "Rust toolchain preserved."
-        fi
-    fi
-}
-
 # Verify removal
 verify_removal() {
     print_status "Verifying removal..."
     local issues_found=false
-
-    # The package must be gone from dpkg's database, not just off the filesystem
-    if dpkg-query -W -f='${Status}' "$PKG_NAME" 2>/dev/null | grep -q "^install"; then
-        print_warning "⚠ $PKG_NAME is still registered with dpkg"
-        issues_found=true
-    else
-        print_status "✓ $PKG_NAME is not installed"
-    fi
-
-    # Check if binaries still exist
-    local binaries=("asusctl" "asusd" "rog-control-center")
-    for binary in "${binaries[@]}"; do
-        if command -v "$binary" &> /dev/null; then
-            print_warning "⚠ $binary still found in PATH"
+    local services_found=false
+    local binary_path
+    local service
+    
+    # Check only binary paths managed by this installer. A separately managed
+    # /usr/local installation is outside this uninstaller's scope.
+    local binary_paths=(
+        "/usr/bin/asusctl"
+        "/usr/bin/asusd"
+        "/usr/bin/asusd-user"
+        "/usr/bin/asus-shutdown"
+        "/usr/bin/supergfxctl"
+        "/usr/bin/supergfxd"
+        "/usr/bin/rog-control-center"
+    )
+    for binary_path in "${binary_paths[@]}"; do
+        if [ -e "$binary_path" ]; then
+            print_warning "⚠ $binary_path is still present"
             issues_found=true
         else
-            print_status "✓ $binary removed successfully"
+            print_status "✓ $binary_path removed successfully"
         fi
     done
     
-    # Check if services still exist
-    if systemctl list-unit-files | grep -q "asusd.service"; then
-        print_warning "⚠ Some systemd services may still be present"
-        issues_found=true
-    else
-        print_status "✓ All systemd services removed"
+    # Check if system services still exist
+    for service in asusd.service asus-shutdown.service supergfxd.service; do
+        if systemctl cat "$service" &> /dev/null; then
+            print_warning "⚠ $service is still present"
+            issues_found=true
+            services_found=true
+        fi
+    done
+
+    if [ "$services_found" = false ]; then
+        print_status "✓ Installer-managed systemd services removed"
     fi
     
     if [ "$issues_found" = true ]; then
         print_warning "Some components may still be present. Manual cleanup may be required."
         return 1
     else
-        print_success "✓ All components removed successfully!"
+        print_success "✓ Installer-managed components removed successfully!"
         return 0
     fi
 }
@@ -444,11 +402,11 @@ verify_removal() {
 # Show completion message
 show_completion() {
     echo
-    print_success "🎉 ASUS Linux tools have been completely removed from your system!"
+    print_success "🎉 Installer-managed ASUS Linux tools have been removed from your system."
     echo
     echo "=== WHAT WAS REMOVED ==="
-    echo "• asusctl binaries"
-    echo "• All ASUS-related systemd services"
+    echo "• asusctl and supergfxctl binaries"
+    echo "• asusd, asus-shutdown, and supergfxd systemd services"
     echo "• Configuration files and udev rules"
     echo "• Desktop applications and icons"
     echo "• Nouveau driver blacklist (if selected)"
@@ -456,15 +414,17 @@ show_completion() {
     echo
     echo "=== WHAT WAS PRESERVED ==="
     echo "• System firmware updates (via fwupd)"
-    echo "• Linux kernel (if upgraded during installation)"
-    echo "• System packages (linux-firmware, fwupd, build tools)"
-    echo "• Rust toolchain (if selected to preserve)"
+    echo "• Existing Linux kernels"
+    echo "• System packages and build tools"
+    echo "• Rust toolchain (it may be shared with other development tools)"
+    echo "• Existing group memberships"
+    echo "• /etc/asusd settings (if selected to preserve)"
     echo
     echo "=== IMPORTANT NOTES ==="
-    echo "• Your ASUS laptop hardware controls are no longer available"
-    echo "• GPU switching functionality has been removed"
-    echo "• Fan curves, LED controls, and power profiles are disabled"
-    echo "• System firmware and kernel remain updated for optimal hardware support"
+    echo "• Controls provided by the removed tools are no longer available"
+    echo "• GPU mode changes provided by these tools are no longer available"
+    echo "• Fan curve, LED, and power-profile availability now depends on other installed software"
+    echo "• Firmware and kernel changes were left unchanged"
     echo "• You may need to reboot for all changes to take effect"
     echo
     print_warning "To reinstall, visit: https://github.com/andreas-glaser/asus-linux-mint"
@@ -482,27 +442,17 @@ main() {
         print_error "This script should not be run as root. Run as a regular user with sudo access."
         exit 1
     fi
-    
-    detect_install_type
+
+    validate_build_directory
     confirm_uninstall
-
-    if [ "$PACKAGED" -eq 1 ]; then
-        # dpkg owns the files; removing them by hand would corrupt its database
-        remove_package
-        remove_package_cache
-    else
-        stop_services
-        remove_binaries
-        remove_service_files
-        remove_config_files
-        remove_desktop_files
-    fi
-
+    stop_services
+    remove_binaries
+    remove_service_files
+    remove_config_files
     remove_asusd_config
     remove_nouveau_blacklist
-    remove_user_groups
+    remove_desktop_files
     remove_build_dirs
-    remove_rust
     
     echo
     if verify_removal; then
@@ -513,5 +463,7 @@ main() {
     fi
 }
 
-# Run main function
-main "$@" 
+# Run main only when executed, not when sourced by validation tests.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

@@ -15,27 +15,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Get version from tag
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unsupported release tag: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "VERSION=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Extract changelog for this version
         id: changelog
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
+          set -euo pipefail
           # Extract the changelog section for this version
-          VERSION=${{ steps.get_version.outputs.VERSION }}
           VERSION_NUMBER=${VERSION#v}
           
           # Get changelog section between this version and the next version header
-          CHANGELOG_SECTION=$(awk "/## \[$VERSION_NUMBER\]/{flag=1; next} /## \[/{flag=0} flag" CHANGELOG.md)
+          CHANGELOG_SECTION=$(awk -v version="$VERSION_NUMBER" '
+            index($0, "## [" version "]") == 1 { flag=1; next }
+            /^## \[/ { flag=0 }
+            flag
+          ' CHANGELOG.md)
           
           # If no specific section found, use a default message
           if [ -z "$CHANGELOG_SECTION" ]; then
-            CHANGELOG_SECTION="Release $VERSION_NUMBER of ASUS Linux Tools Installer for Linux Mint"
+            CHANGELOG_SECTION="Release $VERSION_NUMBER of ASUS Linux Tools Installer for Linux Mint and Ubuntu"
           fi
           
           # Save to output (handling multiline)
@@ -43,14 +55,17 @@ jobs:
             echo 'CHANGELOG<<EOF'
             echo "$CHANGELOG_SECTION"
             echo EOF
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create release archive
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
+          set -euo pipefail
           # Create a clean archive without .git directory
           mkdir -p release-assets
-          git archive --format=tar.gz --prefix=asus-linux-mint-${{ steps.get_version.outputs.VERSION }}/ HEAD > release-assets/asus-linux-mint-${{ steps.get_version.outputs.VERSION }}.tar.gz
-          git archive --format=zip --prefix=asus-linux-mint-${{ steps.get_version.outputs.VERSION }}/ HEAD > release-assets/asus-linux-mint-${{ steps.get_version.outputs.VERSION }}.zip
+          git archive --format=tar.gz --prefix="asus-linux-mint-$VERSION/" HEAD > "release-assets/asus-linux-mint-$VERSION.tar.gz"
+          git archive --format=zip --prefix="asus-linux-mint-$VERSION/" HEAD > "release-assets/asus-linux-mint-$VERSION.zip"
 
       - name: Generate checksums
         run: |
@@ -59,7 +74,7 @@ jobs:
           cat checksums.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: ${{ steps.get_version.outputs.VERSION }}
           name: Release ${{ steps.get_version.outputs.VERSION }}
@@ -70,15 +85,18 @@ jobs:
             
             ## Installation
             
-            ### One-line Installation (Recommended)
+            ### Review Then Install (Recommended)
             ```bash
-            curl -sSL https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/${{ steps.get_version.outputs.VERSION }}/install-asus-linux.sh | bash
+            curl --proto '=https' --tlsv1.2 -fLo install-asus-linux.sh https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/${{ steps.get_version.outputs.VERSION }}/install-asus-linux.sh
+            less install-asus-linux.sh
+            chmod +x install-asus-linux.sh
+            ./install-asus-linux.sh
             ```
             
             ### Manual Download and Install
             ```bash
             # Download the script
-            wget https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/${{ steps.get_version.outputs.VERSION }}/install-asus-linux.sh
+            wget --https-only -O install-asus-linux.sh https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/${{ steps.get_version.outputs.VERSION }}/install-asus-linux.sh
             
             # Make it executable
             chmod +x install-asus-linux.sh
@@ -90,7 +108,7 @@ jobs:
             ## What's Included
             
             - `install-asus-linux.sh` - Main installation script
-            - `uninstall-asus-linux.sh` - Complete uninstall script
+            - `uninstall-asus-linux.sh` - Installer-managed file cleanup script
             - Full documentation and examples
             
             ## Checksums
@@ -99,7 +117,7 @@ jobs:
             
             ---
             
-            **Requirements:** Linux Mint 22.3 (Zena), ASUS ROG/TUF laptop, sudo privileges
+            **Requirements:** Linux Mint 22.3 (primary) or Ubuntu 24.04 (secondary), ASUS ROG/TUF laptop, sudo privileges
           files: |
             release-assets/*
           draft: false

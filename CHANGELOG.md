@@ -12,14 +12,63 @@ and this project follows Linux Mint release versioning with patch numbers.
 - README: "Updating" section covering the update, rollback and package-removal workflow.
 
 ### Changed
-- Uninstaller: detect whether the installation is the `asusctl-ogc` package or an unmanaged file-based one. Packaged installs are removed with `apt remove` so dpkg's database stays consistent, with an optional prompt to clear the rollback package cache; unmanaged installs keep the previous file-by-file removal. Also removes `asus-shutdown`, `asus-shutdown.service`, the renamed `org.opengamingcollective.*` desktop and metainfo files, and `/usr/share/asusctl`, none of which the old path-based lists covered.
-- change asusctl repository to https://github.com/OpenGamingCollective/asusctl following gitlab repo archival
-- Remove supergfxctl following the announced phase out (https://wiki.archlinux.org/title/Supergfxctl)
-- CI: check `update-asus-linux.sh`, and validate the GitHub asusctl repository instead of the archived GitLab one.
+- Uninstaller: detect whether the installation is the `asusctl-ogc` package or an unmanaged file-based one. Packaged installs are removed with `apt remove` so dpkg's database stays consistent, with an optional prompt to clear the rollback package cache; unmanaged installs keep the previous file-by-file removal.
 
 ### Fixed
-- Installer: drop `cargo build --locked`. Upstream does not commit a `Cargo.lock`, so cargo refuses to create one and every build failed with "cannot create the lock file ... because --locked was passed". Upstream removed `--locked` from their own Makefile for the same reason.
 - Updater: install `asusd-user.service` explicitly. Upstream declares `install-data-asusd_user` as `.PHONY` but gives it no recipe, so `make install` silently skips the user unit.
+
+## [22.3.3] - 2026-08-09
+
+### Added
+- Installer: install and enable `asus-shutdown` from asusctl 6.3.11 so queued GPU firmware changes are applied during shutdown.
+- Installer: add `ASUS_INSTALL_SUPERGFXCTL=1` for specialised VFIO, eGPU, dGPU suspend, and monitoring workflows; supergfxctl is disabled by default.
+- Installer: add opt-in firmware updates through `ASUS_UPDATE_FIRMWARE=1`.
+- Supply hash-verified Cargo dependency locks for the pinned asusctl and optional supergfxctl sources.
+- Accept Ubuntu 24.04 as a narrowly versioned secondary compatibility target while keeping Mint 22.3 primary.
+
+### Changed
+- Pin asusctl to stable release 6.3.11 (`4d8a45b3`) and optional supergfxctl to stable release 5.2.7 (`a86383e1`) instead of building moving `main` branches.
+- Treat Linux 6.19 as the minimum for `asus-armoury` TDP/PPT support and leave kernel management to Mint's signed HWE stack instead of installing kernels from this project.
+- Preserve existing supergfxctl installations when the default asusctl-only path is selected.
+- Use versioned source directories so a future stable upgrade cannot collide with an older release's dependency lock.
+- Firmware flashing is now opt-in rather than part of every installation.
+- Bootstrap rustup from the authenticated Mint/Ubuntu package repository, then select the latest stable Rust toolchain.
+- Pin CI and release actions to the exact commits behind their latest stable releases.
+- Refuse unvalidated distributions and releases instead of continuing with incompatible package and service assumptions.
+- Verify the ASUS system vendor through DMI before making package or service changes.
+
+### Fixed
+- Install the current ROG Control Center desktop filename and AppStream metainfo file used by asusctl 6.3.11.
+- Compare Mint and kernel versions with version-aware ordering instead of decimal arithmetic.
+- Read interactive confirmations from the terminal so prompts remain usable when standard input is redirected.
+- Retain legacy supergfxctl cleanup in the uninstaller for users upgrading from earlier releases.
+- Normalize two asusctl unit directives for Mint's systemd 255 so unsupported settings are not silently ignored.
+- Invoke binaries from the selected stable toolchain directly, avoiding Ubuntu rustup proxy failures in a clean environment.
+- Restart already-running ASUS daemons after replacing their binaries so upgrades cannot leave an older process active.
+- Use `apt-get`'s stable scripting interface for dependency installation.
+
+### Security
+- Constrain build directories to the invoking account's real home, reject symlinks, and refuse to overwrite source changes other than the exact installer-supplied lock on a rerun.
+- Fetch and verify exact upstream commit IDs without trusting checkout-configured remotes.
+- Stop unconditionally blacklisting Nouveau, purging distro Rust packages, running `apt autoremove`, or offering to remove shared group membership.
+- Remove a legacy Nouveau blacklist only when it exactly matches content written by older releases.
+- Remove documentation and installer guidance that executed downloaded Rust or kernel scripts through a shell pipeline.
+- Remove mainline-kernel installation guidance now that Mint's signed HWE stack provides a sufficiently recent kernel.
+- Stop installing the unrelated `linux-firmware` package as a build dependency.
+
+### Thanks
+- Thanks to @farfalk for proposing the supergfxctl default removal in PR #8.
+- Thanks to @1-Archit-1 for identifying the current asusctl integration changes in PR #11.
+
+## [22.3.2] - 2026-06-20
+
+### Changed
+- Installer: clone `asusctl` from its new home at `https://github.com/OpenGamingCollective/asusctl` (the project migrated from GitLab to the OpenGamingCollective on GitHub, where future development happens). `supergfxctl` remains on GitLab.
+- README: point asusctl source and issue links to the OGC GitHub repository.
+- CI: validate the asusctl source URL against its new GitHub home.
+
+### Thanks
+- Thanks to @farfalk for reporting the asusctl OGC migration in issue #6.
 
 ## [22.3.1] - 2026-05-20
 
@@ -71,9 +120,9 @@ in
 - Target Linux Mint 22.2 (Zara) only.
 
 ### Changed
-- README: simplify kernel section to reflect Mint 22.2’s default HWE kernel 6.14; keep optional mainline instructions.
+- README: simplify kernel section to reflect Mint 22.2's default HWE kernel 6.14; keep optional mainline instructions.
 - Scripts: set minimum supported Mint to 22.2; align kernel guidance to 6.14; correct HWE meta-packages to `linux-generic`/`linux-headers-generic`.
-- CI: update release requirements text to “Linux Mint 22.2 (Zara)”.
+- CI: update release requirements text to "Linux Mint 22.2 (Zara)".
 
 ### Fixed
 - Uninstall script header label and version alignment.

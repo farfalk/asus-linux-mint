@@ -1,83 +1,56 @@
 # ASUS Linux Tools Installer for Linux Mint
 
-An automated installation script for [asusctl](https://github.com/OpenGamingCollective/asusctl) on ASUS ROG/TUF laptops running **Linux Mint**.
+An automated installer for [asusctl](https://github.com/OpenGamingCollective/asusctl) 6.3.11 - the latest published stable release as of August 9, 2026 - on supported ASUS ROG/TUF laptops. **Linux Mint 22.3 is the primary target**; Ubuntu 24.04 is a secondary compatibility target. The specialised [supergfxctl](https://gitlab.com/asus-linux/supergfxctl) daemon is available as an explicit opt-in.
 
 ## 🚀 Features
 
-- **Automated installation** of latest asusctl for Linux Mint
-- **Release-tracking updates** packaged as a `.deb`, with rollback support
-- **System firmware updates** via fwupd for optimal hardware compatibility
-- **Kernel compatibility checking** with automatic upgrade options
-- **NVIDIA driver preparation** with nouveau blacklist configuration
-- **Comprehensive dependency management** including linux-firmware
-- **Proper systemd service configuration** 
-- **Comprehensive error handling** with colored output
-- **Linux Mint compatibility** for version 22.3
-- **Safe uninstallation** with complete cleanup
-- **ASUS ROG/TUF hardware support** for all major laptop models
+- **Pinned installation** of asusctl 6.3.11 with a hash-verified dependency lock
+- **Optional system firmware updates** via fwupd
+- **Kernel compatibility checking** without changing installed kernels
+- **Build dependency installation** limited to packages used by the selected components
+- **GPU mode handling** through ROG Control Center and the asus-shutdown service
+- **Optional supergfxctl** for VFIO, eGPU, dGPU suspend, and monitoring workflows
+- **Fail-fast error handling** with explicit verification
+- **Linux Mint 22.3 support** and a narrowly checked Ubuntu 24.04 compatibility path
+- **Guided uninstallation** of installer-managed files, including legacy cleanup
+- **ASUS ROG/TUF controls** where supported by the laptop model, firmware, and kernel
 
 ## 📋 Requirements
 
-- **Linux Mint 22.3** (Cinnamon, MATE, or Xfce edition)
+- **Linux Mint 22.3** (Cinnamon, MATE, or Xfce edition; primary target) or **Ubuntu 24.04** (secondary target)
 - **ASUS ROG/TUF laptop** with compatible hardware
 - **Internet connection** for downloading dependencies
 - **Sudo privileges** for system modifications
 
 ## 🧰 Kernel
 
-- Default: Linux Mint 22.3 ships the HWE kernel 6.14, which is recommended and sufficient for ASUS laptops.
-- Optional: If you need newer hardware fixes, you can install a newer mainline kernel and keep 6.14 as fallback.
+- Linux Mint 22.3's supported HWE stack already supplies a modern signed kernel. This installer checks the running version and leaves kernel installation and updates to Mint's Update Manager.
+- Upstream recommends staying on the latest supported kernel because ASUS driver work is ongoing. TDP/PPT controls using `asus-armoury` require Linux 6.19 or later, while optional supergfxctl requires Linux 6.1 or later. Available controls still depend on the exact laptop and firmware.
 
-### 🔧 Optional: Install a newer mainline kernel
+On Mint, review or install a newer supported HWE kernel in **Update Manager → View → Linux Kernels**. On Ubuntu, use its repository-supported kernel updates through **Software Updater**.
 
-If you need bleeding‑edge support or want to test newer kernels, you can install a mainline kernel and retain the distro kernel as a backup:
-
-<details>
-<summary>📋 Click to expand mainline kernel installation methods</summary>
-
-**⚠️ Important Warnings:**
-- Mainline kernels are experimental and unsigned
-- Always keep a working kernel as backup
-- You may need to reinstall NVIDIA drivers after kernel updates
-- Test thoroughly before relying on mainline kernels
-
-**Option 1: Ubuntu Mainline Kernel Installer**
-```bash
-# Install the mainline kernel tool
-sudo apt install -y wget
-wget -qO - https://raw.githubusercontent.com/pimlie/ubuntu-mainline-kernel.sh/master/ubuntu-mainline-kernel.sh | sudo bash
-
-# Install latest stable kernel
-sudo ubuntu-mainline-kernel.sh -i
-```
-
-**Option 2: Manual Installation**
-1. Visit [Ubuntu Mainline Kernels](https://kernel.ubuntu.com/mainline/)
-2. Download the latest stable mainline kernel packages for your architecture
-3. Install using: `sudo dpkg -i *.deb`
-
-**Option 3: GUI Tool (TuxInvader)**
-```bash
-sudo add-apt-repository ppa:tuxinvader/mainline
-sudo apt update && sudo apt install mainline
-# Launch 'mainline' GUI and install latest kernel
-```
-
-</details>
+The complete pinned source and dependency build is tested in a clean Ubuntu 24.04 environment. Hardware/service validation is performed on Mint first, so Ubuntu is not claimed to have identical hardware coverage until that is tested on an installed Ubuntu system.
 
 ## 🛠️ Installation
 
-### Quick Install (Recommended)
+### Review Then Install (Recommended)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/install-asus-linux.sh | bash
+curl --proto '=https' --tlsv1.2 -fLo install-asus-linux.sh \
+  https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/install-asus-linux.sh
+less install-asus-linux.sh
+chmod +x install-asus-linux.sh
+./install-asus-linux.sh
 ```
 
-### Manual Install
+Reviewing the downloaded script is important because the installer uses `sudo` to add system services and hardware-control tools.
+
+### Alternative Downloader
 
 ```bash
 # Download the script
-wget https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/install-asus-linux.sh
+wget --https-only -O install-asus-linux.sh \
+  https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/install-asus-linux.sh
 
 # Make it executable
 chmod +x install-asus-linux.sh
@@ -88,9 +61,11 @@ chmod +x install-asus-linux.sh
 
 ### Custom Build Directory
 
+For safe optional cleanup, a custom build directory must remain below your account's home directory.
+
 ```bash
 # Use custom directory for build files
-ASUS_BUILD_DIR="/opt/asus-build" ./install-asus-linux.sh
+ASUS_BUILD_DIR="$HOME/.local/src/asus-linux-test" ./install-asus-linux.sh
 ```
 
 ### Optional: Install ROG Control Center (GUI)
@@ -100,6 +75,24 @@ By default, the installer includes `rog-control-center` (GUI).
 ```bash
 # Skip the GUI (CLI + daemon only)
 ASUS_INSTALL_ROG_GUI=0 ./install-asus-linux.sh
+```
+
+### Optional: Install supergfxctl
+
+`supergfxctl` 5.2.7 (the latest published stable release as of August 9, 2026) is not installed by default. Its upstream documentation recommends it only for systems that cannot suspend the dGPU, VFIO passthrough, GPU monitoring, hotplug/eGPU, or similar specialised workflows.
+
+```bash
+ASUS_INSTALL_SUPERGFXCTL=1 ./install-asus-linux.sh
+```
+
+Existing `supergfxctl` installations are detected and left unchanged unless this option is enabled. Do not combine it with another GPU switcher.
+
+### Optional: Update firmware
+
+Firmware flashing is independent of asusctl and is disabled by default:
+
+```bash
+ASUS_UPDATE_FIRMWARE=1 ./install-asus-linux.sh
 ```
 
 ## 🔄 Updating
@@ -174,81 +167,77 @@ git -C ~/.local/src/asus-linux/asusctl describe --tags
 
 ### Core Components
 - **asusctl** - Primary ASUS laptop control utility
-- **Rust toolchain** - Latest stable version via rustup
+- **asus-shutdown** - Safely applies queued GPU firmware settings during shutdown
+- **rog-control-center** - GUI, including Integrated/Hybrid/Ultimate GPU modes
+- **supergfxctl** - Optional specialised GPU management
+- **Rust toolchain** - Latest stable toolchain managed by rustup, bootstrapped from Mint/Ubuntu's authenticated APT repository without changing an existing default toolchain
 - **Build dependencies** - All required development packages
-- **linux-firmware** - Essential hardware firmware blobs
 
 ### System Configuration
-- **systemd services** - asusd, and asusd-user
+- **systemd services** - asusd, asus-shutdown, and asusd-user; optionally supergfxd
 - **udev rules** - Hardware detection and device permissions
 - **DBus configuration** - Inter-process communication setup
-- **Firmware updates** - Latest BIOS, EC, and device firmware
-- **Kernel compatibility** - Ensures minimum required kernel version
-- **NVIDIA preparation** - Nouveau driver blacklist for proper GPU switching
+- **Firmware updates** - Only when explicitly enabled
+- **Kernel compatibility** - Verifies the running version without installing or replacing a kernel
 
-### Hardware Features Enabled
-- **Fan curve control** - Custom cooling profiles
-- **RGB lighting control** - Keyboard and logo lighting
-- **Power profiles** - Battery optimization modes
-- **GPU switching** - Integrated/Hybrid/Discrete modes
-- **Keyboard shortcuts** - Fn key combinations
-- **Thermal management** - Advanced cooling control
+### Hardware Features
+
+Available features depend on the exact laptop model, firmware, and kernel. On supported hardware, asusctl can expose fan curves, Aura lighting, platform power profiles, GPU modes, and ASUS hotkeys.
+
+The installer enables ROG Control Center's X11 build feature because Mint desktops commonly use X11. Upstream explicitly does not support X11-specific issues, so the daemon and CLI are the more reliable fallback if the GUI has a display-server problem.
 
 ## 🔧 Usage
 
 ### Basic Commands
 
 ```bash
-# Check ASUS laptop status
-asusctl info
+# Show software, hardware, and supported controls
+asusctl info --show-supported
 
-# Set fan curve to performance mode
-asusctl fan-curve -p performance
+# Switch GPU modes safely
+# Open ROG Control Center and choose Integrated, Hybrid, or Ultimate.
+# The change is queued and applied by asus-shutdown during shutdown/reboot.
 
-# Control RGB lighting
-asusctl led-pow -s on
-asusctl led-mode static
+# Inspect profiles and fan-curve availability
+asusctl profile list
+asusctl fan-curve --get-enabled
+
+# Inspect the current keyboard brightness
+asusctl leds get
 ```
 
 ### Service Management
 
 ```bash
 # Check service status
-sudo systemctl status asusd
+sudo systemctl status asusd asus-shutdown
 
 # Restart services if needed
-sudo systemctl restart asusd
+sudo systemctl restart asusd asus-shutdown
 
 # View service logs
 sudo journalctl -u asusd.service -f
+sudo journalctl -u asus-shutdown.service -f
 ```
 
 ## 🗑️ Uninstallation
 
-The uninstaller detects how asusctl was installed and adapts:
-
-- **Packaged** (you have run `update-asus-linux.sh`) — removes it with `apt remove asusctl-ogc`,
-  so dpkg's database stays consistent, and offers to clear the rollback package cache.
-- **Unmanaged** (installed directly by `install-asus-linux.sh`) — deletes the installed files
-  individually.
-
-Either way it then offers to remove the extras the installer configured: the `/etc/asusd`
-settings, the nouveau blacklist, the build directory and the Rust toolchain.
-
-If you only want to remove asusctl itself from a packaged install, `sudo apt remove asusctl-ogc`
-is enough on its own.
-
-### Quick Uninstall
+### Review Then Uninstall (Recommended)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/uninstall-asus-linux.sh | bash
+curl --proto '=https' --tlsv1.2 -fLo uninstall-asus-linux.sh \
+  https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/uninstall-asus-linux.sh
+less uninstall-asus-linux.sh
+chmod +x uninstall-asus-linux.sh
+./uninstall-asus-linux.sh
 ```
 
 ### Manual Uninstall
 
 ```bash
 # Download the uninstall script
-wget https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/uninstall-asus-linux.sh
+wget --https-only -O uninstall-asus-linux.sh \
+  https://raw.githubusercontent.com/andreas-glaser/asus-linux-mint/main/uninstall-asus-linux.sh
 
 # Make it executable
 chmod +x uninstall-asus-linux.sh
@@ -258,19 +247,24 @@ chmod +x uninstall-asus-linux.sh
 ```
 
 ### What Gets Removed
-- All ASUS Linux tool binaries and libraries
-- System services and configuration files
-- Build directories and source code
+- Installer-managed ASUS Linux tool binaries
+- Installer-managed system services and integration files
 - Desktop applications and icons
-- Optional: nouveau blacklist configuration
+- Optional: legacy nouveau blacklist configuration created by older releases
 - Optional: build directories
 
 ### What Gets Preserved
 - System firmware updates
-- Kernel upgrades
-- System packages (linux-firmware, build tools)
+- Existing kernels
+- System build packages
 - Rust toolchain
-- User data and personal settings
+- Existing group memberships and `/etc/asusd` settings unless their explicit removal is selected
+
+## 🔐 Security and Maintenance
+
+Upstream source revisions and dependency locks are pinned and verified before building, and CI checks weekly that the selected releases are still the latest published stable versions. RustSec found no known vulnerabilities in either lock on August 9, 2026. It did report maintenance warnings for four asusctl dependencies (`bincode`, `paste`, `rustybuzz`, and `ttf-parser`) and one optional supergfxctl dependency (`gumdrop`); those require upstream dependency changes and are not represented here as resolved vulnerabilities.
+
+No installer can guarantee absolute security or compatibility across every firmware and laptop model. Firmware updates and supergfxctl therefore remain explicit opt-ins, and hardware testing should be performed with a working kernel available as a fallback.
 
 ## 🔍 Troubleshooting
 
@@ -280,18 +274,20 @@ chmod +x uninstall-asus-linux.sh
 ```bash
 # Check service logs
 sudo journalctl -u asusd.service -n 50
+sudo journalctl -u asus-shutdown.service -n 50
 
 # Reload and restart
 sudo systemctl daemon-reload
+sudo systemctl restart asusd asus-shutdown
 ```
 
 **GPU switching not working:**
 ```bash
-# Ensure nouveau is blacklisted
-cat /etc/modprobe.d/blacklist-nouveau.conf
-
 # Check GPU status
 lspci | grep -i vga
+
+# Check the deferred GPU-mode service
+sudo systemctl status asus-shutdown
 
 # Reboot after GPU mode changes
 sudo reboot
@@ -308,38 +304,36 @@ gsettings set org.cinnamon.settings-daemon.plugins.power backlight-helper-prefer
 
 Log out and back in, or reboot. If it still fails after reboot, check `/sys/class/backlight/` and consider disabling `nvidia_wmi_ec_backlight` system-wide.
 
-**Permission issues:**
+**Optional supergfxctl permission issues:**
 ```bash
-# Check user groups
-groups $USER
-
-# Add user to appropriate groups
-sudo usermod -a -G users $USER
+# Its D-Bus policy accepts adm, sudo, users, or wheel.
+id -nG
 ```
+
+Mint administrator accounts normally already belong to `sudo` or `adm`. The installer does not broaden group membership automatically; if none of the accepted groups is present, review `/usr/share/dbus-1/system.d/org.supergfxctl.Daemon.conf` before making a manual permissions change.
 
 **Build failures:**
 ```bash
-# Clean and rebuild
-rm -rf ~/.local/src/asus-linux
-./install-asus-linux.sh
+# Rebuild in a fresh directory without deleting the previous checkout
+ASUS_BUILD_DIR="$(mktemp -d)" ./install-asus-linux.sh
 
-# Check dependencies
-sudo apt update && sudo apt upgrade
+# Re-run after reviewing the first build error; the pinned checkout is preserved.
 ```
 
 ### Support Information
 
 When reporting issues, please include:
-- Linux Mint version and edition
+- Distribution, version, and desktop edition
 - ASUS laptop model
 - Kernel version (`uname -r`)
 - Graphics hardware (`lspci | grep -i vga`)
-- Service status (`sudo systemctl status asusd`)
+- Service status (`sudo systemctl status asusd asus-shutdown`)
 - Installation logs and error messages
 
 For more help, visit:
 - [ASUS Linux Community](https://asus-linux.org/)
 - [asusctl GitHub Issues](https://github.com/OpenGamingCollective/asusctl/issues)
+- [supergfxctl GitLab Issues](https://gitlab.com/asus-linux/supergfxctl/-/issues)
 
 ## 📄 License
 
