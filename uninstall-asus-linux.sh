@@ -106,6 +106,7 @@ confirm_uninstall() {
     echo "  • Desktop files and icons"
     echo "  • asusd runtime configuration directory (optional)"
     echo "  • Nouveau driver blacklist (optional)"
+    echo "  • Update check timer (asus-linux-update-check)"
     echo "  • Build directories (optional)"
     echo
     print_warning "Your laptop will lose ASUS-specific hardware control features."
@@ -337,6 +338,34 @@ remove_desktop_files() {
     sudo gtk-update-icon-cache /usr/share/icons/hicolor/ 2>/dev/null || true
 }
 
+# Remove the user-level update check timer and service installed by
+# update-asus-linux.sh --install-timer. These live under the user's systemd
+# unit directory and are not owned by dpkg, so the uninstaller must clean
+# them up directly.
+remove_update_timer() {
+    print_status "Checking for update check timer..."
+
+    local unit_dir="$HOME/.config/systemd/user"
+    local timer_unit="asus-linux-update-check.timer"
+    local service_unit="asus-linux-update-check.service"
+    local found=false
+
+    if systemctl --user cat "$timer_unit" &> /dev/null; then
+        systemctl --user disable --now "$timer_unit" 2>/dev/null || true
+        print_status "✓ $timer_unit stopped and disabled."
+        found=true
+    fi
+
+    rm -f "$unit_dir/$timer_unit" "$unit_dir/$service_unit" 2>/dev/null || true
+
+    if [ "$found" = true ] || [ -f "$unit_dir/$timer_unit" ] || [ -f "$unit_dir/$service_unit" ]; then
+        systemctl --user daemon-reload 2>/dev/null || true
+        print_status "✓ Update check timer removed."
+    else
+        print_status "✓ No update check timer found."
+    fi
+}
+
 # Remove build directories
 remove_build_dirs() {
     if [ -d "$BASE_DIR" ]; then
@@ -393,6 +422,14 @@ verify_removal() {
     if [ "$services_found" = false ]; then
         print_status "✓ Installer-managed systemd services removed"
     fi
+
+    # Check if the update check timer still exists
+    if systemctl --user cat asus-linux-update-check.timer &> /dev/null; then
+        print_warning "⚠ asus-linux-update-check.timer is still present"
+        issues_found=true
+    else
+        print_status "✓ Update check timer removed"
+    fi
     
     if [ "$issues_found" = true ]; then
         print_warning "Some components may still be present. Manual cleanup may be required."
@@ -414,6 +451,7 @@ show_completion() {
     echo "• Configuration files and udev rules"
     echo "• Desktop applications and icons"
     echo "• Nouveau driver blacklist (if selected)"
+    echo "• Update check timer (if present)"
     echo "• Build directories (if selected)"
     echo
     echo "=== WHAT WAS PRESERVED ==="
@@ -500,6 +538,7 @@ main() {
     remove_asusd_config
     remove_nouveau_blacklist
     remove_desktop_files
+    remove_update_timer
     remove_build_dirs
     
     echo
