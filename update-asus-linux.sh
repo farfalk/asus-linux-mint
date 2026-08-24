@@ -158,9 +158,14 @@ confirm() {
     if [ "$ASSUME_YES" -eq 1 ]; then
         return 0
     fi
-    read -p "$prompt (y/N): " -n 1 -r
+    if [ ! -r /dev/tty ]; then
+        print_error "Interactive confirmation requires a terminal (or use --yes)."
+        return 1
+    fi
+    local reply
+    read -r -p "$prompt (y/N): " -n 1 reply < /dev/tty
     echo
-    [[ $REPLY =~ ^[Yy]$ ]]
+    [[ "$reply" =~ ^[Yy]$ ]]
 }
 
 # Check basic preconditions
@@ -329,8 +334,11 @@ Package: $PKG_NAME
 Architecture: any
 EOF
 
+    # dpkg-shlibdeps may exit non-zero (e.g. missing info despite --ignore-missing-info).
+    # Suppress that so set -e does not kill the script before the fallback runs,
+    # and always clean up the temp directory.
     depends="$(cd "$shlibdeps_dir" && dpkg-shlibdeps -O --ignore-missing-info "${binaries[@]}" 2>/dev/null \
-        | sed -n 's/^shlibs:Depends=//p')"
+        | sed -n 's/^shlibs:Depends=//p' || true)"
     rm -rf "$shlibdeps_dir"
 
     if [ -n "$depends" ]; then
@@ -766,6 +774,7 @@ main() {
 
     case "$MODE" in
         check)
+            check_system
             do_check
             ;;
         rollback)

@@ -27,6 +27,10 @@ SCRIPT_VERSION="22.3.3"
 ACCOUNT_HOME=$(getent passwd "$(id -u)" | cut -d: -f6)
 BASE_DIR="${ASUS_BUILD_DIR:-$ACCOUNT_HOME/.local/src/asus-linux}"
 
+# Package name used by update-asus-linux.sh when it wraps asusctl in a .deb.
+PKG_NAME="asusctl-ogc"
+CACHE_DIR="/var/cache/asus-linux-mint"
+
 # Function for colored output
 print_status() {
     echo -e "\e[32m[INFO]\e[0m $1"
@@ -430,6 +434,44 @@ show_completion() {
     print_warning "To reinstall, visit: https://github.com/andreas-glaser/asus-linux-mint"
 }
 
+# Detect whether asusctl was installed as the asusctl-ogc .deb package by
+# update-asus-linux.sh. If so, apt owns the files and must remove them so
+# dpkg's database stays consistent. The file-by-file path below is only for
+# unmanaged installs created by install-asus-linux.sh directly.
+has_packaged_install() {
+    dpkg-query -W -f='${Status}' "$PKG_NAME" 2>/dev/null | grep -q '^install ok installed'
+}
+
+# Remove the asusctl-ogc package, then offer to clean up the rollback cache.
+# Stops services first so the unit files are not busy when dpkg removes them.
+# Also removes files the package does not own: supergfxctl (installed separately
+# by the installer), desktop files, icons, and leftover config. The package
+# owns the asusctl binaries, asusd/asus-shutdown services, and udev rules, so
+# those are left to apt.
+remove_packaged() {
+    print_status "Detected $PKG_NAME package (installed by update-asus-linux.sh)."
+    print_status "Removing via apt so dpkg's database stays consistent."
+
+    stop_services
+    sudo apt remove -y "$PKG_NAME"
+
+    # Remove supergfxctl and other files the package does not own.
+    remove_binaries
+    remove_service_files
+    remove_config_files
+
+    if [ -d "$CACHE_DIR" ] && [ -n "$(find "$CACHE_DIR" -maxdepth 1 -name "${PKG_NAME}_*.deb" -print -quit 2>/dev/null)" ]; then
+        echo
+        print_warning "Cached .deb packages found in $CACHE_DIR."
+        if prompt_yes_no "Remove cached packages? (y/N): "; then
+            sudo rm -f "$CACHE_DIR"/${PKG_NAME}_*.deb
+            print_status "✓ Cache cleared."
+        else
+            print_status "Cache preserved in $CACHE_DIR."
+        fi
+    fi
+}
+
 # Main uninstall flow
 main() {
     print_header
@@ -445,10 +487,16 @@ main() {
 
     validate_build_directory
     confirm_uninstall
-    stop_services
-    remove_binaries
-    remove_service_files
-    remove_config_files
+
+    if has_packaged_install; then
+        remove_packaged
+    else
+        stop_services
+        remove_binaries
+        remove_service_files
+        remove_config_files
+    fi
+
     remove_asusd_config
     remove_nouveau_blacklist
     remove_desktop_files
