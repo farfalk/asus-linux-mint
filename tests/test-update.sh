@@ -36,12 +36,31 @@ cat > "$MOCK_BIN/apt" <<'MOCK'
 exit 0
 MOCK
 
-# dpkg-query: return MOCK_INSTALLED_VERSION when set, else exit 1 (not found)
+# dpkg-query: simulate dpkg's Status+Version output.
+# MOCK_INSTALLED_VERSION: version string (empty = not in dpkg at all)
+# MOCK_INSTALLED_STATUS: dpkg status (default: "install ok installed")
+#   Set to "deinstall ok config-files" to simulate apt-remove-without-purge.
 export MOCK_INSTALLED_VERSION=""
+export MOCK_INSTALLED_STATUS=""
 cat > "$MOCK_BIN/dpkg-query" <<'MOCK'
 #!/bin/bash
+# Extract the -f format string (handles both -f VAL and -f=VAL forms)
+fmt=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -f)  fmt="$2"; shift 2 ;;
+        -f=*) fmt="${1#-f=}"; shift ;;
+        -W)  shift ;;
+        *)   shift ;;
+    esac
+done
 if [ -n "${MOCK_INSTALLED_VERSION:-}" ]; then
-    echo "$MOCK_INSTALLED_VERSION"
+    status="${MOCK_INSTALLED_STATUS:-install ok installed}"
+    case "$fmt" in
+        *Status*Version*) echo "$status ${MOCK_INSTALLED_VERSION}" ;;
+        *Status*)         echo "$status" ;;
+        *)                echo "${MOCK_INSTALLED_VERSION}" ;;
+    esac
     exit 0
 fi
 exit 1
@@ -198,6 +217,14 @@ MOCK_INSTALLED_VERSION="6.4.0"
 result=$(get_installed_version)
 [[ "$result" == "6.4.0" ]] || fail "get_installed_version should return the version"
 MOCK_INSTALLED_VERSION=""
+
+# 14b. get_installed_version with residual config-files (apt remove without purge)
+MOCK_INSTALLED_VERSION="6.4.0"
+MOCK_INSTALLED_STATUS="deinstall ok config-files"
+result=$(get_installed_version)
+[[ -z "$result" ]] || fail "get_installed_version should be empty for deinstall ok config-files"
+MOCK_INSTALLED_VERSION=""
+MOCK_INSTALLED_STATUS=""
 
 # ---------------------------------------------------------------------------
 # 15-17. has_legacy_install

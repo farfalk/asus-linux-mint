@@ -204,9 +204,12 @@ ensure_rust() {
     fi
 }
 
-# Version currently installed, as dpkg sees it. Empty if not packaged.
+# Version currently installed, as dpkg sees it. Empty if not packaged or
+# only residual config-files remain after apt remove (not apt purge).
 get_installed_version() {
-    dpkg-query -W -f='${Version}' "$PKG_NAME" 2>/dev/null || true
+    dpkg-query -W -f='${Status} ${Version}' "$PKG_NAME" 2>/dev/null \
+        | grep -q '^install ok installed ' \
+        && dpkg-query -W -f='${Version}' "$PKG_NAME" 2>/dev/null || true
 }
 
 # True when asusctl is present on disk but not owned by our package, i.e. it was
