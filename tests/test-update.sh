@@ -80,6 +80,12 @@ cat > "$MOCK_BIN/systemctl" <<'MOCK'
 exit 0
 MOCK
 
+# notify-send: suppress real desktop notifications during tests
+cat > "$MOCK_BIN/notify-send" <<'MOCK'
+#!/bin/bash
+exit 0
+MOCK
+
 chmod +x "$MOCK_BIN"/*
 export PATH="$MOCK_BIN:$PATH"
 
