@@ -24,7 +24,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
-          shellcheck -x -S warning install-asus-linux.sh uninstall-asus-linux.sh update-asus-linux.sh tests/*.sh
+          shellcheck -x -S warning make-dpkg.sh install-asus-linux.sh uninstall-asus-linux.sh update-asus-linux.sh tests/*.sh
 
   syntax-check:
     name: Syntax Validation
@@ -43,6 +43,9 @@ jobs:
 
           echo "Checking update script syntax..."
           bash -n update-asus-linux.sh
+
+          echo "Checking make-dpkg.sh syntax..."
+          bash -n make-dpkg.sh
 
           echo "Making scripts executable..."
           chmod +x install-asus-linux.sh uninstall-asus-linux.sh update-asus-linux.sh
@@ -152,6 +155,7 @@ jobs:
           bash tests/test-installer.sh
           bash tests/test-uninstaller.sh
           bash tests/test-update.sh
+          bash tests/test-dpkg.sh
 
   security-scan:
     name: Installer Security Contracts
