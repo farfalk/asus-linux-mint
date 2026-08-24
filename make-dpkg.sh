@@ -158,19 +158,23 @@ if [ "$1" = "configure" ]; then
 
     # asusd.service has no [Install] section: it is Type=dbus with a BusName and
     # is therefore D-Bus activated and "static". enable/disable do not apply.
+    # asus-shutdown.service has an [Install] section (WantedBy=
+    # multi-user.target) and must be explicitly enabled. Always enable it
+    # because a previous removal may have disabled it.
+    systemctl enable asus-shutdown.service || true
+
     if [ -z "$2" ]; then
         # Fresh install. Note this also covers taking over an unmanaged install,
         # where an old asusd is already running: "start" would be a no-op and
         # leave the previous binary serving D-Bus, so restart unconditionally.
         # restart also starts the unit when it is not running.
         systemctl restart asusd.service || true
-
-        # asus-shutdown.service has an [Install] section (WantedBy=
-        # multi-user.target) and must be explicitly enabled on fresh install.
-        systemctl enable asus-shutdown.service || true
         systemctl restart asus-shutdown.service || true
     else
-        # Upgrade: only restart if it was already running
+        # Upgrade: only restart if it was already running. This avoids
+        # starting a service the admin deliberately stopped. However,
+        # asus-shutdown.service was already enabled above so it will
+        # start on next boot regardless.
         systemctl try-restart asusd.service || true
         systemctl try-restart asus-shutdown.service || true
     fi

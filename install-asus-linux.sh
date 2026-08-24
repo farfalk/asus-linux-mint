@@ -671,6 +671,16 @@ install_asusctl_dpkg() {
     deb_path="$(build_deb "$ASUSCTL_VERSION")"
     install_deb "$deb_path"
     enable_user_service
+
+    # Safety net: the postinst runs as root during dpkg configure, but when
+    # upgrading from a deinstall ok config-files state, dpkg passes the old
+    # version as $2, so the postinst takes the "upgrade" branch and only
+    # try-restarts services that are already running. After an uninstall+
+    # reinstall cycle the services are stopped, so start them explicitly.
+    sudo systemctl restart asusd.service 2>/dev/null || true
+    sudo systemctl enable asus-shutdown.service 2>/dev/null || true
+    sudo systemctl restart asus-shutdown.service 2>/dev/null || true
+
     warn_stale_gui "$ASUSCTL_VERSION"
     prune_cache
 
